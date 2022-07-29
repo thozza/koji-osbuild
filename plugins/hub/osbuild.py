@@ -94,6 +94,10 @@ OSBUILD_IMAGE_SCHEMA = {
                     "type": "object",
                     "$ref": "#/definitions/ostree"
                 },
+                "upload_options": {
+                    "type": "object",
+                    "additionalProperties": True,
+                },
                 "repo": {
                     "type": "array",
                     "description": "Repositories",
