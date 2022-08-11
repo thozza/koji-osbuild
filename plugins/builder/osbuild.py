@@ -110,13 +110,58 @@ class Repository:
         return res
 
 
+class UploadOptionsRegistry:
+    def __init__(self) -> None:
+        self._common_options = None
+        self._arch_img_options_map = None
+
+    @classmethod
+    def from_data(cls, data: Union[List, Dict, None]) -> "UploadOptionsRegistry":
+        instance = cls()
+        if data is None:
+            return instance
+
+        if isinstance(data, dict):
+            instance._common_options = data
+            return instance
+
+        arch_img_options_map = {}
+        for arch_img_options in data:
+            arch = arch_img_options["arch"]
+            image_type = arch_img_options["image_type"]
+            options = arch_img_options["upload_options"]
+
+            try:
+                arch_map = arch_img_options_map[arch]
+            except KeyError:
+                arch_map = {}
+                arch_img_options_map[arch] = arch_map
+
+            if image_type in arch_map:
+                raise ValueError(f"Duplicate upload options for {image_type} / {arch}")
+
+            arch_map[image_type] = options
+
+        instance._arch_img_options_map = arch_img_options_map
+        return instance
+
+    def get_options(self, arch: str, image_type: str) -> Union[Dict, None]:
+        if self._common_options is not None:
+            return self._common_options
+
+        if self._arch_img_options_map is None:
+            return None
+
+        return self._arch_img_options_map.get(arch, {}).get(image_type)
+
+
 class ImageRequest:
-    def __init__(self, arch: str, image_type: str, repos: List):
+    def __init__(self, arch: str, image_type: str, repos: List, upload_options: Optional[Dict]):
         self.architecture = arch
         self.image_type = image_type
         self.repositories = repos
         self.ostree: Optional[OSTreeOptions] = None
-        self.upload_options: Optional[Dict] = None
+        self.upload_options = upload_options
 
     def as_dict(self):
         arch = self.architecture
@@ -679,9 +724,12 @@ class OSBuildImage(BaseTaskHandler):
         if not nvr.release:
             nvr.release = self.session.getNextRelease(nvr.as_dict())
 
+        # Cloud upload options
+        upload_options_reg = UploadOptionsRegistry.from_data(opts.get("upload_options"))
+
         # Arches and image type
         image_type = self.map_koji_api_image_type(image_type)
-        ireqs = [ImageRequest(a, image_type, repos) for a in arches]
+        ireqs = [ImageRequest(a, image_type, repos, upload_options_reg.get_options(a, image_type)) for a in arches]
 
         # OStree specific options
         ostree = opts.get("ostree")
@@ -690,12 +738,6 @@ class OSBuildImage(BaseTaskHandler):
 
         for ireq in ireqs:
             ireq.ostree = ostree
-
-        # Cloud upload options
-        upload_options = opts.get("upload_options")
-        if upload_options:
-            for ireq in ireqs:
-                ireq.upload_options = upload_options
 
         self.logger.debug("Creating compose: %s (%s)\n  koji: %s\n  images: %s",
                           nvr, distro, self.koji_url,
@@ -771,7 +813,7 @@ def compose_cmd(client: Client, args):
     repos = [Repository(url) for url in args.repo]
 
     for arch in args.arch:
-        ireq = ImageRequest(arch, format, repos)
+        ireq = ImageRequest(arch, format, repos, None)
         images.append(ireq)
 
     kojidata = ComposeRequest.Koji(args.koji, 0, nvr)

@@ -5,6 +5,7 @@
 #pylint: disable=too-many-lines
 
 import configparser
+import itertools
 import json
 import os
 import re
@@ -1162,7 +1163,7 @@ class TestBuilderPlugin(PluginTest): # pylint: disable=too-many-public-methods
 
     @httpretty.activate
     def test_compose_repo_complex(self):
-        # Check we properly handle ostree compose requests
+        # Check we properly handle compose requests with complex repos
         session = self.mock_session()
         handler = self.make_handler(session=session)
 
@@ -1251,6 +1252,59 @@ class TestBuilderPlugin(PluginTest): # pylint: disable=too-many-public-methods
             self.assertEqual(uo, upload_options)
 
     @httpretty.activate
+    def test_compose_upload_options_complex(self):
+        # Check we properly handle compose requests with per img / arch combination upload options
+        session = self.mock_session()
+        handler = self.make_handler(session=session)
+
+        arches = ["x86_64", "aarch64"]
+        upload_options = [
+            {
+                "arch": "x86_64",
+                "image_type": "image_type",
+                "upload_options": {
+                    "region": "us-east-1",
+                    "share_with_accounts": ["123456789"]
+                }
+            }
+        ]
+        args = ["name", "version", "distro",
+                ["image_type"],
+                "fedora-candidate",
+                arches,
+                {"upload_options": upload_options}]
+
+        url = self.plugin.DEFAULT_COMPOSER_URL
+        composer = MockComposer(url, architectures=arches)
+        composer.httpretty_register()
+
+        res = handler.handler(*args)
+        assert res, "invalid compose result"
+        compose_id = res["composer"]["id"]
+        compose = composer.composes.get(compose_id)
+        self.assertIsNotNone(compose)
+
+        ireqs = compose["request"]["image_requests"]
+
+        # Check we got all the requested architectures
+        ireq_arches = [i["architecture"] for i in ireqs]
+        diff = set(arches) ^ set(ireq_arches)
+        self.assertEqual(diff, set())
+        self.assertEqual(len(ireqs), len(arches))
+
+        # only the x86_64 image_type should have upload_options
+        x86_64_ireq = ireqs[0]
+        self.assertEqual(x86_64_ireq["architecture"], "x86_64")
+        uo = x86_64_ireq.get("upload_options")
+        self.assertIsNotNone(uo)
+        self.assertEqual(uo, upload_options[0]["upload_options"])
+
+        aarch64_ireq = ireqs[1]
+        self.assertEqual(aarch64_ireq["architecture"], "aarch64")
+        uo = aarch64_ireq.get("upload_options")
+        self.assertIsNone(uo)
+
+    @httpretty.activate
     def test_compose_status_retry(self):
         compose_id = "43e57e63-ab32-4a8d-854d-3bbc117fdce3"
 
@@ -1258,3 +1312,69 @@ class TestBuilderPlugin(PluginTest): # pylint: disable=too-many-public-methods
 
         client = self.plugin.Client("http://localhost")
         client.wait_for_compose(compose_id, sleep_time=0.1)
+
+
+@PluginTest.load_plugin("builder")
+class TestUploadOptionsRegistry(PluginTest):
+
+    def test_no_options(self):
+        """Test that no options are returned if no upload options are set"""
+        reg = self.plugin.UploadOptionsRegistry.from_data(None)
+        for arch, image_type in itertools.product(["x86_64", "s390x"], ["aws", "azure", "gce", "guest-image"]):
+            self.assertEqual(reg.get_options(arch, image_type), None)
+
+    def test_global_options(self):
+        """Test that global options are returned for any image-type / arch combination"""
+        global_options = {
+            "region": "us-east-1",
+            "share_with_accounts": ["123456789"]
+        }
+        reg = self.plugin.UploadOptionsRegistry.from_data(global_options)
+        for arch, image_type in itertools.product(["x86_64", "s390x"], ["aws", "azure", "gce", "guest-image"]):
+            self.assertEqual(reg.get_options(arch, image_type), global_options)
+
+    def test_combination_specific_options(self):
+        """Test that upload options are returned only for defined combinations of image-type and arch"""
+
+        options = [
+            {
+                "arch": "x86_64",
+                "image_type": "aws",
+                "upload_options": {
+                    "region": "us-east-1",
+                    "share_with_accounts": ["123456789"]
+                }
+            },
+            {
+                "arch": "aarch64",
+                "image_type": "aws",
+                "upload_options": {
+                    "region": "us-east-123",
+                    "share_with_accounts": ["987654321"]
+                }
+            },
+            {
+                "arch": "x86_64",
+                "image_type": "gce",
+                "upload_options": {
+                    "region": "eu",
+                    "share_with_accounts": ["nobody@google.com"]
+                }
+            }
+        ]
+        reg = self.plugin.UploadOptionsRegistry.from_data(options)
+
+        self.assertEqual(reg.get_options("x86_64", "aws"), {
+                "region": "us-east-1",
+                "share_with_accounts": ["123456789"]
+            })
+        self.assertEqual(reg.get_options("aarch64", "aws"), {
+                "region": "us-east-123",
+                "share_with_accounts": ["987654321"]
+            })
+        self.assertEqual(reg.get_options("x86_64", "gce"), {
+                "region": "eu",
+                "share_with_accounts": ["nobody@google.com"]
+            })
+        self.assertEqual(reg.get_options("s390x", "aws"), None)
+        self.assertEqual(reg.get_options("aarch64", "gce"), None)

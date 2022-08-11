@@ -95,8 +95,36 @@ OSBUILD_IMAGE_SCHEMA = {
                     "$ref": "#/definitions/ostree"
                 },
                 "upload_options": {
-                    "type": "object",
-                    "additionalProperties": True,
+                    "oneOf": [
+                        {
+                            "type": "object",
+                            "description": "Upload options to apply to all images produced by this build",
+                            "additionalProperties": True
+                        },
+                        {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["arch", "image-type", "upload-options"],
+                                "additionalProperties": False,
+                                "properties": {
+                                    "arch": {
+                                        "type": "string",
+                                        "description": "Architecture to apply upload options to"
+                                    },
+                                    "image_type": {
+                                        "type": "string",
+                                        "description": "Image type to apply upload options to"
+                                    },
+                                    "upload_options": {
+                                        "type": "object",
+                                        "description": "Upload options to apply to the image type and arch combination",
+                                        "additionalProperties": True
+                                    }
+                                }
+                            }
+                        }
+                    ]
                 },
                 "repo": {
                     "type": "array",
