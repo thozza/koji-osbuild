@@ -80,6 +80,23 @@ class OSTreeOptions:
         return res
 
 
+class BootcOptions:
+    def __init__(self, data) -> None:
+        self.ref = data.get("ref")
+        self.build_ref = data.get("build-ref")
+        self.installer_payload_ref = data.get("installer-payload-ref")
+
+    def as_dict(self):
+        res = {}
+        if self.ref:
+            res["reference"] = self.ref
+        if self.build_ref:
+            res["build_reference"] = self.build_ref
+        if self.installer_payload_ref:
+            res["iso_payload_reference"] = self.installer_payload_ref
+        return res
+
+
 class Repository:
     def __init__(self, baseurl: str):
         self.baseurl = baseurl
@@ -173,6 +190,7 @@ class ComposeRequest:
         self.image_requests = ireqs
         self.koji = koji
         self.customizations: Optional[dict] = None
+        self.bootc: Optional[BootcOptions] = None
 
     def as_dict(self):
         res = {
@@ -184,6 +202,8 @@ class ComposeRequest:
         }
         if self.customizations:
             res["customizations"] = self.customizations
+        if self.bootc:
+            res["bootc"] = self.bootc.as_dict()
         return res
 
 
@@ -711,6 +731,11 @@ class OSBuildImage(BaseTaskHandler):
 
         # Additional customizations are passed through
         request.customizations = opts.get("customizations")
+
+        # Bootc options
+        bootc = opts.get("bootc")
+        if bootc:
+            request.bootc = BootcOptions(bootc)
 
         self.upload_json(request.as_dict(), "compose-request")
 

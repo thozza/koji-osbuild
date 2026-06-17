@@ -1260,6 +1260,49 @@ class TestBuilderPlugin(PluginTest): # pylint: disable=too-many-public-methods
             self.assertEqual(uo, upload_options)
 
     @httpretty.activate
+    def test_bootc_compose(self):
+        session = self.mock_session()
+        handler = self.make_handler(session=session)
+
+        bootc = {
+            "ref": "quay.io/centos-bootc/centos-bootc:stream9",
+            "build-ref": "quay.io/centos-bootc/centos-bootc:build",
+            "installer-payload-ref": "quay.io/centos-bootc/centos-bootc:payload",
+        }
+
+        arches = ["x86_64", "aarch64"]
+        repos = ["http://1.repo", "https://2.repo"]
+        args = ["name", "version", "distro",
+                "image_type",
+                "fedora-candidate",
+                arches,
+                {"repo": repos,
+                 "bootc": bootc
+                 }]
+
+        url = self.plugin.DEFAULT_COMPOSER_URL
+        composer = MockComposer(url, architectures=arches)
+        composer.httpretty_register()
+
+        res = handler.handler(*args)
+        assert res, "invalid compose result"
+        compose_id = res["composer"]["id"]
+        compose = composer.composes.get(compose_id)
+        self.assertIsNotNone(compose)
+
+        ireqs = compose["request"]["image_requests"]
+
+        ireq_arches = [i["architecture"] for i in ireqs]
+        diff = set(arches) ^ set(ireq_arches)
+        self.assertEqual(diff, set())
+
+        compose_bootc = compose["request"].get("bootc")
+        self.assertIsNotNone(compose_bootc)
+        self.assertEqual(compose_bootc["reference"], bootc["ref"])
+        self.assertEqual(compose_bootc["build_reference"], bootc["build-ref"])
+        self.assertEqual(compose_bootc["iso_payload_reference"], bootc["installer-payload-ref"])
+
+    @httpretty.activate
     def test_compose_status_retry(self):
         compose_id = "43e57e63-ab32-4a8d-854d-3bbc117fdce3"
 

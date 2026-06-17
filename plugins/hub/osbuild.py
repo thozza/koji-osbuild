@@ -99,6 +99,22 @@ OSBUILD_IMAGE_SCHEMA = {
                 }
             }
         },
+        "bootc": {
+            "title": "bootc specific options",
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "ref": {
+                    "type": "string"
+                },
+                "build-ref": {
+                    "type": "string"
+                },
+                "installer-payload-ref": {
+                    "type": "string"
+                }
+            }
+        },
         "options": {
             "title": "Optional arguments",
             "type": "object",
@@ -111,6 +127,11 @@ OSBUILD_IMAGE_SCHEMA = {
                 "ostree": {
                     "type": "object",
                     "$ref": "#/definitions/ostree"
+                },
+                "bootc": {
+                    "type": "object",
+                    "$ref": "#/definitions/bootc",
+                    "description": "Additional bootc options"
                 },
                 "upload_options": {
                     # this should be really 'oneOf', but the minimal required

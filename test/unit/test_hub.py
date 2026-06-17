@@ -98,6 +98,34 @@ class TestHubPlugin(PluginTest):
 
         self.plugin.osbuildImage(*args, opts)
 
+    def test_bootc_options(self):
+        context = self.mock_koji_context()
+
+        opts = {
+            "bootc": {
+                "ref": "quay.io/centos-bootc/centos-bootc:stream9",
+                "build-ref": "quay.io/centos-bootc/centos-bootc:build",
+                "installer-payload-ref": "quay.io/centos-bootc/centos-bootc:payload",
+            }
+        }
+        args = [
+            "name",
+            "version",
+            "distro",
+            "image_type",
+            "target",
+            ["arches"]
+        ]
+        make_task_args = args + [opts]
+        task = {"channel": "image"}
+
+        kojihub = self.mock_kojihub(make_task_args, task)
+
+        setattr(self.plugin, "context", context)
+        setattr(self.plugin, "kojihub", kojihub)
+
+        self.plugin.osbuildImage(*args, opts)
+
     def test_input_validation(self):
         test_cases = [
             # only a single image type is allowed
@@ -128,6 +156,23 @@ class TestHubPlugin(PluginTest):
                             "package_sets": ["set1", "set2"]
                         }
                     ]
+                }
+            },
+            # bootc with unexpected extra field is not allowed
+            {
+                "args": [
+                    "name",
+                    "version",
+                    "distro",
+                    "image_type",
+                    "target",
+                    ["arches"]
+                ],
+                "opts": {
+                    "bootc": {
+                        "ref": "quay.io/centos-bootc/centos-bootc:stream9",
+                        "unknown-field": "not-allowed"
+                    }
                 }
             }
         ]

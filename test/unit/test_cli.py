@@ -307,6 +307,58 @@ class TestCliPlugin(PluginTest):
         r = self.plugin.handle_osbuild_image(options, session, argv)
         self.assertEqual(r, 0)
 
+    def test_bootc_options(self):
+        argv = [
+            # the required positional arguments
+            "name", "version", "distro", "target", "arch1",
+            # optional keyword arguments
+            "--repo", "https://first.repo",
+            "--bootc-ref", "quay.io/centos-bootc/centos-bootc:stream9",
+            "--bootc-build-ref", "quay.io/centos-bootc/centos-bootc:build",
+            "--bootc-installer-payload-ref", "quay.io/centos-bootc/centos-bootc:payload",
+        ]
+
+        expected_args = ["name", "version", "distro",
+                         'guest-image',
+                         "target",
+                         ['arch1']]
+
+        expected_opts = {
+            "repo": ["https://first.repo"],
+            "bootc": {
+                "ref": "quay.io/centos-bootc/centos-bootc:stream9",
+                "build-ref": "quay.io/centos-bootc/centos-bootc:build",
+                "installer-payload-ref": "quay.io/centos-bootc/centos-bootc:payload",
+            }
+        }
+
+        task_result = {"compose_id": "42", "build_id": 23}
+        task_id = 1
+        koji_lib = self.mock_koji_lib()
+
+        options = self.mock_options()
+        session = flexmock()
+
+        self.mock_session_add_valid_tag(session)
+
+        session.should_receive("osbuildImage") \
+               .with_args(*expected_args, opts=expected_opts) \
+               .and_return(task_id) \
+               .once()
+
+        session.should_receive("logout") \
+               .with_args() \
+               .once()
+
+        session.should_receive("getTaskResult") \
+               .with_args(task_id) \
+               .and_return(task_result) \
+               .once()
+
+        setattr(self.plugin, "kl", koji_lib)
+        r = self.plugin.handle_osbuild_image(options, session, argv)
+        self.assertEqual(r, 0)
+
     def test_target_check(self):
         # unknown build target
         session = flexmock()

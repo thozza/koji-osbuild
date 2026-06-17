@@ -59,6 +59,12 @@ def parse_args(argv):
                       help="The OSTree commit ref for OSTree commit image types")
     parser.add_option("--ostree-url", type=str, dest="ostree_url",
                       help="URL to the OSTree repo for OSTree commit image types")
+    parser.add_option("--bootc-ref", type=str, dest="bootc_ref",
+                      help="Ref to the bootable container for bootc image types")
+    parser.add_option("--bootc-build-ref", type=str, dest="bootc_build_ref",
+                      help="Ref to the bootable container build root container for bootc image types")
+    parser.add_option("--bootc-installer-payload-ref", type=str, dest="bootc_installer_payload_ref",
+                      help="Ref to the bootable container installer payload container for bootc image types")
     parser.add_option("--release", help="Forcibly set the release field")
     parser.add_option("--repo", action="callback", callback=parse_repo, nargs=1, type=str,
                       help=("Specify a repo that will override the repo used to install "
@@ -136,6 +142,21 @@ def handle_osbuild_image(options, session, argv):
 
     if ostree:
         opts["ostree"] = ostree
+
+    # bootc command line parameters
+    bootc = {}
+
+    if args.bootc_ref:
+        bootc["ref"] = args.bootc_ref
+
+    if args.bootc_build_ref:
+        bootc["build-ref"] = args.bootc_build_ref
+
+    if args.bootc_installer_payload_ref:
+        bootc["installer-payload-ref"] = args.bootc_installer_payload_ref
+
+    if bootc:
+        opts["bootc"] = bootc
 
     # customizations handling
     if args.customizations:
